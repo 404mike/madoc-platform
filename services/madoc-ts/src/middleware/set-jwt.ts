@@ -43,6 +43,7 @@ export const setJwt: RouteMiddleware<{ slug?: string }> = async (context, next) 
         maxAge: expiresIn * 1000,
         overwrite: true,
         signed: true,
+        httpOnly: false,
       });
 
       lastToken = token;

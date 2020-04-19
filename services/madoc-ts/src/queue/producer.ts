@@ -1,32 +1,63 @@
-import { Worker } from 'bullmq';
-import { getTaskById } from '../gateway/tasks';
+import { Worker, WorkerOptions } from 'bullmq';
 
-const configOptions = {
+import * as manifest from '../tasks/import-manifest';
+import * as collection from '../tasks/import-collection';
+import * as canvas from '../tasks/import-canvas';
+import { OmekaApi } from '../utility/omeka-api';
+import { createMysqlPool } from '../database/create-mysql-pool';
+
+const configOptions: WorkerOptions = {
   connection: {
     host: process.env.REDIS_HOST,
     db: 2,
   },
+  concurrency: 2,
 };
 
+const mysqlPool = createMysqlPool();
+
 const worker = new Worker(
-  'tasks-api',
+  'madoc-ts',
   async job => {
-    switch (job.name) {
 
-      case 'subtask_type_status.type-a.1':
-        console.log('ALL TASKS ARE of type A are at status 1');
-        break;
+    console.log('starting job..', job.id);
 
-      case 'created': {
-        console.log('Fetching task...');
-        const fullTask = await getTaskById(job.data.taskId);
-        console.log('Task ID created', fullTask);
-        break;
+    try {
+      const omeka = new OmekaApi(mysqlPool);
+      switch (job.data.type) {
+        case collection.type:
+          return await collection.jobHandler(job, omeka).catch(err => {
+            throw err;
+          });
+        case manifest.type:
+          return await manifest.jobHandler(job, omeka).catch(err => {
+            throw err;
+          });
+        case canvas.type:
+          return await canvas.jobHandler(job, omeka).catch(err => {
+            throw err;
+          });
       }
+    } catch (e) {
+      console.log(e);
+      await job.retry('failed');
     }
 
-    // Artificial timeout.
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // switch (job.name) {
+    //   case 'subtask_type_status.type-a.1':
+    //     console.log('ALL TASKS ARE of type A are at status 1');
+    //     break;
+    //
+    //   case 'created': {
+    //     console.log('Fetching task...');
+    //     const fullTask = await getTaskById(job.data.taskId);
+    //     console.log('Task ID created', fullTask);
+    //     break;
+    //   }
+    // }
+    //
+    // // Artificial timeout.
+    // await new Promise(resolve => setTimeout(resolve, 1000));
   },
   configOptions
 );

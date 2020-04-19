@@ -40,11 +40,10 @@ module.exports = {
       : [
           {
             name: 'server',
-            script: 'src/index.ts',
+            script: 'lib/index.js',
             instances: 1,
             autorestart: true,
-            watch: true,
-            ignore_watch: ['service-jwts', 'service-jwt-responses'],
+            watch: ['lib'],
             max_memory_restart: '1G',
             env: {
               NODE_ENV: 'development',
@@ -55,19 +54,18 @@ module.exports = {
           },
           {
             name: 'queue',
-            script: 'src/queue/producer.ts',
-            instances: 2,
+            script: 'lib/queue/producer.js',
+            instances: 1,
             autorestart: true,
-            watch: true,
-            ignore_watch: ['service-jwts', 'service-jwt-responses'],
+            max_memory_restart: '1G',
+            watch: ['lib/queue'],
           },
           {
             name: 'scheduler',
-            script: 'src/queue/scheduler.ts',
+            script: 'lib/queue/scheduler.js',
             instances: 1,
             autorestart: true,
-            watch: true,
-            ignore_watch: ['service-jwts', 'service-jwt-responses'],
+            watch: ['lib/queue'],
           },
         ],
 };

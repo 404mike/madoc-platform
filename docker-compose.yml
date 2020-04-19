@@ -67,13 +67,14 @@ services:
       dockerfile: Dockerfile.dev
     restart: always
     volumes:
-      - ./services/madoc-ts/src:/home/node/app/src
+      - ./services/madoc-ts/lib:/home/node/app/lib
       - ./services/madoc-ts/migrations:/home/node/app/migrations
       - ./services/madoc-ts/schemas:/home/node/app/schemas
       - ./services/madoc-ts/ecosystem.config.js:/home/node/app/ecosystem.config.js
       - ./services/madoc-ts/service-jwts:/home/node/app/service-jwts
       - ./var/certs:/openssl-certs
       - ./var/jwt:/home/node/app/service-jwt-responses
+      - ./var/files:/home/node/app/omeka-files
     environment:
       - DATABASE_HOST=shared-postgres
       - DATABASE_NAME=madoc
@@ -89,6 +90,7 @@ services:
       - OMEKA__URL=http://madoc
       - REDIS_HOST=gateway-redis
       - API_GATEWAY=http://gateway:8080
+      - OMEKA_FILE_DIRECTORY=/home/node/app/omeka-files
     links:
       - shared-postgres
       - madoc-database
@@ -107,7 +109,7 @@ services:
       - DATABASE_USER=tasks_api
       - DATABASE_SCHEMA=public
       - DATABASE_PASSWORD=tasks_api_password
-      - QUEUE_LIST=tasks-api
+      - QUEUE_LIST=tasks-api,madoc-ts
       - REDIS_HOST=gateway-redis
     ports:
       - "8105:3000"

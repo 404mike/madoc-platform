@@ -6,6 +6,7 @@ use Exception;
 use MadocBridge\Authentication\AuthenticationServiceFactory;
 use MadocBridge\Authentication\MadocCookieStorage;
 use MadocBridge\Controller\TemplateController;
+use MadocBridge\Store\LocalFactory;
 use MiladRahimi\Jwt\Cryptography\Algorithms\Rsa\RS256Verifier;
 use MiladRahimi\Jwt\Cryptography\Keys\RsaPublicKey;
 use Omeka\Api\Manager;
@@ -42,6 +43,9 @@ class Module extends AbstractModule
             'service_manager' => [
                 'factories' => [
                     'Omeka\AuthenticationService' => AuthenticationServiceFactory::class,
+                    'Omeka\File\Store' => LocalFactory::class,
+                    'Omeka\File\Store\Local' => LocalFactory::class,
+
                     MadocCookieStorage::class => function (ContainerInterface $c) {
                         return new MadocCookieStorage($c->get('Omeka\Connection'));
                     }

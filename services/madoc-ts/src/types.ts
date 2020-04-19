@@ -48,7 +48,7 @@ export interface ApplicationContext {
   connection: DatabasePoolConnectionType;
   omeka: OmekaApi;
   ajv: Ajv;
-  omekaPage?: string;
+  omekaPage?: string | ((token: string) => Promise<string | undefined>) | ((token: string) => undefined | string);
   omekaMessages: Array<{ type: 'success' | 'error'; message: string }>;
 }
 

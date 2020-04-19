@@ -3,7 +3,7 @@ import { config } from '../config';
 
 export function createMysqlPool(): Pool {
   return createPool({
-    connectionLimit: 10,
+    connectionLimit: 20,
     host: config.mysql.host,
     user: config.mysql.username,
     password: config.mysql.password,

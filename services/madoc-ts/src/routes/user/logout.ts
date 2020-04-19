@@ -6,7 +6,7 @@ export const logout: RouteMiddleware<{ slug: string }> = async context => {
     const user = jwt.user;
     const cookieName = context.externalConfig.cookieName || 'madoc';
     // Get user sites
-    const sites = await context.omeka.getUserSites(user.id);
+    const sites = await context.omeka.getUserSites(user.id, 'admin'); // @todo change this to avoid leaking sites
     // Unset cookies.
     for (const site of sites) {
       const domain = `/s/${site.slug}`;

@@ -2,7 +2,7 @@
 
 namespace Digirati\OmekaShared\Model;
 
-class FieldValue implements ValueInterface
+class  FieldValue implements ValueInterface
 {
     /**
      * @var string
