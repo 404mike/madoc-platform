@@ -10,5 +10,5 @@ if (!jwt) {
 }
 
 export const api = (jwt
-  ? new ApiClient(`${window.location.protocol}//${window.location.host}/`, jwt)
+  ? new ApiClient(`${window.location.protocol}//${window.location.host}`, jwt)
   : undefined) as ApiClient;

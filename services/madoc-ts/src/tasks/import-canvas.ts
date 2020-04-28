@@ -5,13 +5,15 @@ import { api } from '../gateway/api.server';
 import { Job } from 'bullmq';
 import { Vault } from '@hyperion-framework/vault';
 import cache from 'memory-cache';
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 import { Canvas, CanvasNormalized, ManifestNormalized } from '@hyperion-framework/types';
 import { Resource, ResourceItem } from '../omeka/Resource';
 import { fromInternationalString, jsonMedia, url, urlMedia } from '../utility/field-value';
 import { createHash } from 'crypto';
 import { mysql } from '../utility/mysql';
 import { iiifGetLabel } from '../utility/iiif-get-label';
+import mkdirp from 'mkdirp';
+import { DatabasePoolType, sql } from 'slonik';
 
 export const type = 'madoc-canvas-import';
 
@@ -108,7 +110,10 @@ async function getThumbnail(vault: Vault, canvas: any) {
   }
 }
 
-export const jobHandler = async (job: Job<{ taskId: string }>, omeka: OmekaApi) => {
+const ENABLE_POSTGRES = true;
+const fileDirectory = process.env.OMEKA_FILE_DIRECTORY || '/home/node/app/omeka-files';
+
+export const jobHandler = async (job: Job<{ taskId: string }>, omeka: OmekaApi, postgres: DatabasePoolType) => {
   switch (job.name) {
     case 'created': {
       try {
@@ -116,13 +121,13 @@ export const jobHandler = async (job: Job<{ taskId: string }>, omeka: OmekaApi) 
         // @todo handle case where getting task fails, return job to queue.
         const task = await api.acceptTask<ImportCanvasTask>(job.data.taskId);
 
-        console.log('Loading manifest...');
+        // console.log('Loading manifest...');
         // 1. Load from disk.
         // @todo handle case where fetch fails, return job to queue?
         const [omekaUserId, pathToManifest, manifestId] = task.parameters;
         const [manifestJson, unmodifiedManifest] = loadManifest(pathToManifest);
 
-        console.log('Loading vault...');
+        // console.log('Loading vault...');
 
         // Vault for parsing IIIF
         const vault = sharedVault(manifestId);
@@ -134,7 +139,7 @@ export const jobHandler = async (job: Job<{ taskId: string }>, omeka: OmekaApi) 
         const manifestJsonId = manifestJson['@id'] ? manifestJson['@id'] : manifestJson.id;
 
         if (state.hyperion.requests[manifestId]) {
-          console.log('-> Found manifest');
+          // console.log('-> Found manifest');
           let times = 0;
           if (state.hyperion.requests[manifestId].loadingState === 'RESOURCE_LOADING') {
             while (times < 10) {
@@ -147,18 +152,18 @@ export const jobHandler = async (job: Job<{ taskId: string }>, omeka: OmekaApi) 
             }
           }
           if (state.hyperion.requests[manifestId].loadingState === 'RESOURCE_ERROR') {
-            console.log('-> Did errored manifest');
+            // console.log('-> Did errored manifest');
             // I don't know? Try again?
             await vault.loadManifest(manifestJsonId, manifestJson);
           }
         } else if (!state.hyperion.entities.Manifest[manifestJsonId]) {
-          console.log('-> Did not find manifest');
+          // console.log('-> Did not find manifest');
           await vault.loadManifest(manifestJsonId, manifestJson).catch(err => {
-            console.log(err);
+            // console.log(err);
           });
         }
 
-        console.log('Loading parsed manifest...');
+        // console.log('Loading parsed manifest...');
         const manifest = vault.fromRef<ManifestNormalized>({ id: manifestId, type: 'Manifest' });
 
         // @todo handle case where canvas does not exist.
@@ -168,67 +173,118 @@ export const jobHandler = async (job: Job<{ taskId: string }>, omeka: OmekaApi) 
           .digest('hex');
 
         const idList = (manifest.items || []).map(ref => ref.id);
+        const canvasOrder = idList.indexOf(canvas.id);
         // This could be improved.
         // @todo wrap with checks.
         const canvasJson = unmodifiedManifest.sequences[0].canvases.find((c: any) => c['@id'] === canvas.id);
 
-        // @todo move to itemWithIdentifier in Omeka
-        const itemAlready = await omeka
-          .one<Resource | undefined>(
-            mysql`SELECT r.*
+        let item: any;
+        let itemAlready: any;
+
+        if (ENABLE_POSTGRES) {
+          await postgres.transaction(async connection => {
+            // 0. Write media to disk
+            mkdirp.sync(`${fileDirectory}/original/madoc-manifests/${idHash}/canvases/`);
+            writeFileSync(
+              `${fileDirectory}/original/madoc-manifests/${idHash}/canvases/c${canvasOrder}.json`,
+              Buffer.from(JSON.stringify(canvasJson))
+            );
+
+            // @todo item exists eqv.
+            const thumbnail = await getThumbnail(vault, canvas);
+            const thumbId = thumbnail && thumbnail.best && thumbnail.best.id ? thumbnail.best.id : undefined;
+
+            // 1. Insert into resource
+            item = await connection.one<{ id: number }>(
+              sql`insert into iiif_resource (type, source, default_thumbnail) 
+                    VALUES ('canvas', ${canvas.id}, ${thumbId || null}) RETURNING *`
+            );
+
+            // 2. Add metadata.
+            const labels = fromInternationalString(canvas.label);
+            const atLeastOneLabel = labels.length ? labels : [{ value: 'Untitled canvas', lang: '@none' }];
+            const metadata = [
+              ...atLeastOneLabel.map(label => ({ key: 'label', value: label.value, language: label.lang || '@none' })),
+              ...fromInternationalString(canvas.summary).map(summary => ({
+                key: 'summary',
+                value: summary.value,
+                language: summary.lang || '@none',
+              })),
+            ];
+
+            if (metadata.length) {
+              const inserts = metadata.map(
+                value => sql`(
+                ${value.key}, 
+                ${value.value || ''}, 
+                ${value.language}, 
+                ${item.id},
+                'iiif'
+              )`
+              );
+              await connection.query(
+                sql`insert into iiif_metadata (key, value, language, resource_id, source) 
+                    VALUES ${sql.join(inserts, sql`,`)}`
+              );
+            }
+          });
+        } else {
+          // @todo move to itemWithIdentifier in Omeka
+          itemAlready = await omeka
+            .one<Resource | undefined>(
+              mysql`SELECT r.*
               FROM resource r
                        LEFT JOIN value v on r.id = v.resource_id
                        LEFT JOIN property p on v.property_id = p.id
               WHERE p.local_name = 'identifier'
                 AND v.uri = ${canvas.id}`
-          )
-          .catch(() => undefined);
+            )
+            .catch(() => undefined);
 
-        const canvasOrder = idList.indexOf(canvas.id);
+          if (itemAlready) {
+            await api.updateTask(
+              task.id,
+              changeStatus('done', {
+                name: iiifGetLabel(canvas.label),
+                state: { omekaId: itemAlready.id, canvasOrder, isDuplicate: true },
+              })
+            );
+            return;
+          }
 
-        if (itemAlready) {
-          await api.updateTask(
-            task.id,
-            changeStatus('done', {
-              name: iiifGetLabel(canvas.label),
-              state: { omekaId: itemAlready.id, canvasOrder, isDuplicate: true },
-            })
+          // @todo wrap this up, fallback to nothing.
+          const thumbnail = await getThumbnail(vault, canvas);
+          const thumbId = thumbnail && thumbnail.best && thumbnail.best.id ? thumbnail.best.id : undefined;
+
+          if (thumbId) {
+            // console.log(`Found thumb ${thumbId}`);
+          }
+
+          // console.log('Updating omeka...');
+
+          // 3. Add collection into Omeka.
+          item = await omeka.createItemFromTemplate(
+            'IIIF Canvas',
+            ResourceItem,
+            {
+              'dcterms:title': fromInternationalString(canvas.label),
+              'dcterms:description': fromInternationalString(canvas.summary),
+              'dcterms:identifier': [url('Canvas URI', canvas.id)],
+              'foaf:thumbnail': [thumbId ? urlMedia('Thumbnail', thumbId) : undefined],
+              'dcterms:source': [
+                jsonMedia(
+                  'Canvas source',
+                  `/madoc-manifests/${idHash}/canvases/c${canvasOrder}.json`,
+                  canvas.id,
+                  Buffer.from(JSON.stringify(canvasJson))
+                ),
+              ],
+            },
+            omekaUserId
           );
-          return;
         }
 
-        // @todo wrap this up, fallback to nothing.
-        const thumbnail = await getThumbnail(vault, canvas);
-        const thumbId = thumbnail && thumbnail.best && thumbnail.best.id ? thumbnail.best.id : undefined;
-
-        if (thumbId) {
-          console.log(`Found thumb ${thumbId}`);
-        }
-
-        console.log('Updating omeka...');
-
-        // 3. Add collection into Omeka.
-        const item = await omeka.createItemFromTemplate(
-          'IIIF Canvas',
-          ResourceItem,
-          {
-            'dcterms:title': fromInternationalString(canvas.label),
-            'dcterms:description': fromInternationalString(canvas.summary),
-            'dcterms:identifier': [url('Canvas URI', canvas.id)],
-            'foaf:thumbnail': [thumbId ? urlMedia('Thumbnail', thumbId) : undefined],
-            'dcterms:source': [
-              jsonMedia(
-                'Canvas source',
-                `/madoc-manifests/${idHash}/canvases/c${canvasOrder}.json`,
-                canvas.id,
-                Buffer.from(JSON.stringify(canvasJson))
-              ),
-            ],
-          },
-          omekaUserId
-        );
-
-        console.log('Updating task...');
+        // console.log('Updating task...');
 
         // 6. Set task to waiting for canvases
         await api.updateTask(
@@ -239,7 +295,7 @@ export const jobHandler = async (job: Job<{ taskId: string }>, omeka: OmekaApi) 
           })
         );
       } catch (e) {
-        console.log(e);
+        // console.log(e);
         await api.updateTask(
           job.data.taskId,
           changeStatus('error', {
@@ -248,7 +304,7 @@ export const jobHandler = async (job: Job<{ taskId: string }>, omeka: OmekaApi) 
         );
       }
 
-      console.log('Done.');
+      // console.log('Done.');
 
       break;
     }

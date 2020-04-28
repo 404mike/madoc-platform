@@ -2,6 +2,9 @@ import { UniversalComponent } from '../../../types';
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
+// Custom wrapper around query
+// Will
+
 const ManageCollections: UniversalComponent<
   { collections: any[]; page: number; nextPage: boolean },
   { collectionId?: string },
@@ -11,6 +14,7 @@ const ManageCollections: UniversalComponent<
 
   return (
     <div>
+      <Link to="/create-collection">Create collection</Link>
       <ul>
         {collections.map((collection, key) => (
           <li key={key}>

@@ -166,6 +166,15 @@ export class OmekaApi {
     };
   }
 
+  async getSiteLabelById(siteId?: number) {
+    if (!siteId) {
+      return;
+    }
+    const site = await this.one<{ label: string }>(mysql`select title from site where id = ${siteId}`);
+
+    return site.label;
+  }
+
   async getUserSites(userId: number, role: string): Promise<UserSite[]> {
     if (role && role === 'global_admin') {
       const sites = await this.many<UserSite>(mysql`SELECT s.id, s.slug, s.title FROM site s`);
@@ -301,17 +310,19 @@ export class OmekaApi {
     });
   }
 
-  async getCollectionById(id: number, connection?: PoolConnection) {
+  async getCollectionById(id: number, siteId: number, connection?: PoolConnection) {
     return this.one<{ id: number; label: string; count: number }>(
       mysql`
         select resource.id as id, v.value as label, COUNT(distinct v2.value_resource_id) as manifest_count
         from resource
                  left join resource_class on resource.resource_class_id = resource_class.id
+                 left join value vr on resource.id = vr.resource_id
                  left join value v on resource.id = v.resource_id
                  left join value v2 on resource.id = v2.resource_id
         where resource_class.local_name = 'Collection'
           and resource.id = ${id}
-          and v.property_id = 1
+          and v.property_id = 1 
+          ${raw(siteId ? mysql`and vr.property_id = 33 and vr.uri = ${`urn:madoc:site:${siteId}`}` : '')}
           and resource_type = ${ResourceItemSet}
         group by resource.id, v.value
     `,
@@ -319,30 +330,39 @@ export class OmekaApi {
     );
   }
 
-  async getCollections(page = 0, connection?: PoolConnection) {
+  async getCollections(page = 0, siteId?: number, connection?: PoolConnection) {
     const collectionsPerPage = 5;
     const offset = collectionsPerPage * page;
 
-    const collections = await this.many<{ id: number; label: string; count: number }>(
-      mysql`
-        select resource.id as id, v.value as label, COUNT(distinct v2.value_resource_id) as manifest_count
-        from resource
-                 left join resource_class on resource.resource_class_id = resource_class.id
-                 left join value v on resource.id = v.resource_id
-                 left join value v2 on resource.id = v2.resource_id
-        where resource_class.local_name = 'Collection'
-          and v.property_id = 1
-          and resource_type = ${ResourceItemSet}
-        group by resource.id, v.value
-        limit ${offset}, ${collectionsPerPage + 1};
-      `,
-      connection
-    );
-
-    return {
-      collections: collections.slice(0, collectionsPerPage),
-      nextPage: collections.length > collectionsPerPage,
-    };
+    try {
+      const collections = await this.many<{ id: number; label: string; count: number }>(
+        mysql`
+          select resource.id as id, v.value as label, COUNT(distinct v2.value_resource_id) as manifest_count
+          from resource
+                   left join resource_class on resource.resource_class_id = resource_class.id
+                   left join value vr on resource.id = vr.resource_id
+                   left join value v on resource.id = v.resource_id
+                   left join value v2 on resource.id = v2.resource_id
+          where resource_class.local_name = 'Collection'
+            and v.property_id = 1
+            ${raw(siteId ? mysql`and vr.property_id = 33 and vr.uri = ${`urn:madoc:site:${siteId}`}` : '')}
+            and resource_type = ${ResourceItemSet}
+          group by resource.id, v.value
+          limit ${offset}, ${collectionsPerPage + 1};
+        `,
+        connection
+      );
+      return {
+        collections: collections.slice(0, collectionsPerPage),
+        nextPage: collections.length > collectionsPerPage,
+      };
+    } catch (err) {
+      console.log(err);
+      return {
+        collections: [],
+        nextPage: false,
+      };
+    }
   }
 
   async getManifestSnippetsByCollectionId(

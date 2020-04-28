@@ -11,6 +11,7 @@ import { entity, fromInternationalString, url } from '../utility/field-value';
 import { ImportManifestTask } from './import-manifest';
 import { ResourceItemSet } from '../omeka/Resource';
 import { iiifGetLabel } from '../utility/iiif-get-label';
+import { DatabasePoolType, sql } from 'slonik';
 
 export const type = 'madoc-collection-import';
 
@@ -62,17 +63,21 @@ export function changeStatus<K extends any>(
   return tasks.changeStatus(status, newStatus, data);
 }
 
-export const jobHandler = async (job: Job<{ taskId: string }>, omeka: OmekaApi) => {
-  console.log('Starting collection parsing');
+const ENABLE_POSTGRES = true;
+
+export const jobHandler = async (job: Job<{ taskId: string }>, omeka: OmekaApi, postgres: DatabasePoolType) => {
+  if (true as false) {
+    return;
+  }
+
+  // console.log('Starting collection parsing');
   switch (job.name) {
     case 'created': {
-      console.log('collection.created');
       // Vault for parsing IIIF
       const vault = new Vault();
 
       // Get the task.
       const task = await api.acceptTask<ImportCollectionTask>(job.data.taskId);
-      console.log('Fetched full task and accepted -> ', task.status, task.status_text);
 
       const [omekaUserId] = task.parameters;
 
@@ -82,16 +87,53 @@ export const jobHandler = async (job: Job<{ taskId: string }>, omeka: OmekaApi) 
 
       // 2. Add collection into Omeka.
       // @todo check if collection is already there.
-      const item = await omeka.createItemFromTemplate(
-        'IIIF Collection',
-        ResourceItemSet,
-        {
-          'dcterms:title': fromInternationalString(iiifCollection.label),
-          'dcterms:description': fromInternationalString(iiifCollection.summary),
-          'dcterms:identifier': [url(iiifCollection.id, 'Collection URI')],
-        },
-        omekaUserId
-      );
+
+      let item: any;
+
+      if (ENABLE_POSTGRES) {
+        await postgres.transaction(async connection => {
+          // 1. Insert into resource
+          item = await connection.one<{ id: number }>(
+            sql`insert into iiif_resource (type, source) VALUES ('collection', ${iiifCollection.id}) RETURNING *`
+          );
+
+          // 2. Add metadata.
+          const labels = fromInternationalString(iiifCollection.label);
+          const atLeastOneLabel = labels.length ? labels : [{ value: 'Untitled collection', lang: '@none' }];
+          const metadata = [
+            ...atLeastOneLabel.map(label => ({ key: 'label', value: label.value, langauge: label.lang })),
+          ];
+
+          if (metadata.length) {
+            const inserts = metadata.map(
+              value => sql`(
+                ${value.key}, 
+                ${value.value || ''}, 
+                ${value.langauge || '@none'}, 
+                ${item.id},
+                'iiif'
+              )`
+            );
+            await connection.query(
+              sql`insert into iiif_metadata (key, value, language, resource_id, source) VALUES ${sql.join(
+                inserts,
+                sql`,`
+              )}`
+            );
+          }
+        });
+      } else {
+        item = await omeka.createItemFromTemplate(
+          'IIIF Collection',
+          ResourceItemSet,
+          {
+            'dcterms:title': fromInternationalString(iiifCollection.label),
+            'dcterms:description': fromInternationalString(iiifCollection.summary),
+            'dcterms:identifier': [url(iiifCollection.id, 'Collection URI')],
+          },
+          omekaUserId
+        );
+      }
 
       // To save media:
       // - Save to disk under `files/original/{folder}`
@@ -155,7 +197,7 @@ export const jobHandler = async (job: Job<{ taskId: string }>, omeka: OmekaApi) 
       for (const subtask of subtasks) {
         if (subtask.type === importManifest.type) {
           const omekaId = subtask.state.omekaId;
-          console.log('Found of type', omekaId);
+          // console.log('Found of type', omekaId);
           if (ids.indexOf(omekaId) === -1) {
             fields.push(entity(omekaId, 'resource:item'));
             ids.push(omekaId);
@@ -163,15 +205,37 @@ export const jobHandler = async (job: Job<{ taskId: string }>, omeka: OmekaApi) 
         }
       }
 
-      if (fields.length) {
-        await omeka.updateItem(
-          task.state.omekaId,
-          {
-            'sc:hasManifests': fields,
-          },
-          omekaUserId
+      if (ENABLE_POSTGRES) {
+        const omekaId = task.state.omekaId;
+        if (!omekaId) {
+          await api.updateTask(job.data.taskId, changeStatus('error' as any));
+          return;
+        }
+
+        // @todo correct manifest order.
+        const inserts = fields.map(
+          (field, idx) => sql`(
+          ${omekaId},
+          ${field.value_resource_id as any},
+          ${idx}
+        )`
         );
+
+        await postgres.query(
+          sql`INSERT INTO iiif_resource_items (resource_id, item_id, item_index) VALUES ${sql.join(inserts, sql`,`)}`
+        );
+      } else {
+        if (fields.length) {
+          await omeka.updateItem(
+            task.state.omekaId,
+            {
+              'sc:hasManifests': fields,
+            },
+            omekaUserId
+          );
+        }
       }
+
       await api.updateTask(job.data.taskId, changeStatus('done'));
       break;
     }

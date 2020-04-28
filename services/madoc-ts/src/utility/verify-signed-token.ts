@@ -7,6 +7,7 @@ export type TokenReturn = {
   token: string;
   key: JWK.Key;
   payload: {
+    service: boolean;
     scope: string;
     iss_name: string;
     name: string;

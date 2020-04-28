@@ -26,46 +26,26 @@ export const SSRContext = createContext<any>(undefined);
 const AdminApp: React.FC<AdminAppProps> = ({ api }) => {
   return (
     <ApiContext.Provider value={api}>
-      <h1>Admin app.</h1>
-      <div>
-        <ul>
-          <li>
-            <Link to="/">Home</Link>
-          </li>
-          <li>
-            <Link to="/about">About</Link>
-          </li>
-          <li>
-            <Link to="/dashboard">Dashboard</Link>
-          </li>
-          <li>
-            <Link to="/collections/abc">Collection ABC</Link>
-          </li>
-          <li>
-            <Link to="/collections/def">Collection DEF</Link>
-          </li>
-        </ul>
-
-        <hr />
-
-        <Switch>
-          {routes.map(({ component, ...route }, key) => (
-            <Route
-              key={key}
-              {...route}
-              render={() => {
-                return <DataLoadingRoute component={component} />;
-              }}
-            />
-          ))}
-          <Route path="/about">
-            <div>About</div>
-          </Route>
-          <Route path="/dashboard">
-            <div>Dashboard</div>
-          </Route>
-        </Switch>
-      </div>
+      <h1>
+        <Link to="/">Admin Dashboard</Link>
+      </h1>
+      <Switch>
+        {routes.map(({ component, ...route }, key) => (
+          <Route
+            key={key}
+            {...route}
+            render={() => {
+              return <DataLoadingRoute component={component} />;
+            }}
+          />
+        ))}
+        <Route path="/about">
+          <div>About</div>
+        </Route>
+        <Route path="/dashboard">
+          <div>Dashboard</div>
+        </Route>
+      </Switch>
     </ApiContext.Provider>
   );
 };

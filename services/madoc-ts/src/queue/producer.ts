@@ -5,6 +5,7 @@ import * as collection from '../tasks/import-collection';
 import * as canvas from '../tasks/import-canvas';
 import { OmekaApi } from '../utility/omeka-api';
 import { createMysqlPool } from '../database/create-mysql-pool';
+import { createPostgresPool } from '../database/create-postgres-pool';
 
 const configOptions: WorkerOptions = {
   connection: {
@@ -19,22 +20,22 @@ const mysqlPool = createMysqlPool();
 const worker = new Worker(
   'madoc-ts',
   async job => {
-
     console.log('starting job..', job.id);
 
     try {
+      const postgres = createPostgresPool();
       const omeka = new OmekaApi(mysqlPool);
       switch (job.data.type) {
         case collection.type:
-          return await collection.jobHandler(job, omeka).catch(err => {
+          return await collection.jobHandler(job, omeka, postgres).catch(err => {
             throw err;
           });
         case manifest.type:
-          return await manifest.jobHandler(job, omeka).catch(err => {
+          return await manifest.jobHandler(job, omeka, postgres).catch(err => {
             throw err;
           });
         case canvas.type:
-          return await canvas.jobHandler(job, omeka).catch(err => {
+          return await canvas.jobHandler(job, omeka, postgres).catch(err => {
             throw err;
           });
       }

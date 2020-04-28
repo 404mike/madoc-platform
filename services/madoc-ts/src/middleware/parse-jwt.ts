@@ -37,6 +37,7 @@ export const parseJwt: RouteMiddleware<{ slug?: string }> = async (context, next
         if (token) {
           context.state.jwt = parseJWT(token);
           await next(); // only here.
+          return;
         }
       }
     } catch (e) {

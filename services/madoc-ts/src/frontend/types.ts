@@ -10,3 +10,8 @@ export type UniversalRoute = {
   exact?: boolean;
   component: UniversalComponent<any, any, any>;
 };
+
+export type QueryComponent<Data = any, TKey = any, TVariables = any> = React.FC & {
+  getKey: (params: any, query: any) => [TKey, TVariables];
+  getData: (key: TKey, vars: TVariables, api: ApiClient) => Promise<Data>;
+};

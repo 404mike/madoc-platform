@@ -76,6 +76,12 @@ END
 $$;
 EOSQL
 
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" -d madoc <<-"EOSQL"
+
+CREATE EXTENSION IF NOT EXISTS "ltree";
+
+EOSQL
+
     docker_temp_server_stop
 fi
 

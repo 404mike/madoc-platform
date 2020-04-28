@@ -1,5 +1,6 @@
 import { fetchJson } from './fetch-json';
 import { BaseTask } from '../tasks/base-task';
+import { InternationalString } from '@hyperion-framework/types';
 
 export class ApiClient {
   private readonly gateway: string;
@@ -33,6 +34,17 @@ export class ApiClient {
       page: number;
     }>(`/api/madoc/iiif/collections${page ? `?page=${page}` : ''}`);
   }
+
+  async createCollection(collection: { label: InternationalString; summary: InternationalString }, source?: string) {
+    return this.request<any>(`/api/madoc/iiif/collections`, {
+      body: {
+        collection: collection,
+        source,
+      },
+      method: 'POST',
+    });
+  }
+
   async getCollectionById(id: number, page: number) {
     return this.request<any>(`/api/madoc/iiif/collection/${id}${page ? `?page=${page}` : ''}`);
   }

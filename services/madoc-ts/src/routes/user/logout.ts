@@ -2,7 +2,7 @@ import { RouteMiddleware } from '../../types';
 
 export const logout: RouteMiddleware<{ slug: string }> = async context => {
   const jwt = context.state.jwt;
-  if (jwt) {
+  if (jwt && !jwt.user.service) {
     const user = jwt.user;
     const cookieName = context.externalConfig.cookieName || 'madoc';
     // Get user sites

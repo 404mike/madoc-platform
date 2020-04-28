@@ -13,6 +13,9 @@ import { entity, fromInternationalString, jsonMedia, url } from '../utility/fiel
 import { Resource, ResourceItem } from '../omeka/Resource';
 import { mysql } from '../utility/mysql';
 import { iiifGetLabel } from '../utility/iiif-get-label';
+import { DatabasePoolType, sql } from 'slonik';
+import mkdirp from 'mkdirp';
+import { writeFileSync } from 'fs';
 
 export const type = 'madoc-manifest-import';
 
@@ -64,7 +67,10 @@ export function changeStatus<K extends any>(
   return tasks.changeStatus(status, newStatus, data);
 }
 
-export const jobHandler = async (job: Job<{ taskId: string }>, omeka: OmekaApi) => {
+const ENABLE_POSTGRES = true;
+const fileDirectory = process.env.OMEKA_FILE_DIRECTORY || '/home/node/app/omeka-files';
+
+export const jobHandler = async (job: Job<{ taskId: string }>, omeka: OmekaApi, postgres: DatabasePoolType) => {
   switch (job.name) {
     case 'created': {
       // Vault for parsing IIIF
@@ -78,52 +84,97 @@ export const jobHandler = async (job: Job<{ taskId: string }>, omeka: OmekaApi) 
       const text = await fetch(task.subject).then(r => r.text());
       const json = JSON.parse(text);
       const iiifManifest = await vault.loadManifest(task.subject, json);
-
-      // 3. Add manifest into Omeka.
       const idHash = createHash('sha1')
         .update(iiifManifest.id)
         .digest('hex');
 
-      const itemAlready = await omeka
-        .one<Resource | undefined>(
-          mysql`SELECT r.*
+      let item: any;
+      let itemAlready: Resource | undefined;
+      if (ENABLE_POSTGRES) {
+        await postgres.transaction(async connection => {
+          // 0. Write media to disk
+          mkdirp.sync(`${fileDirectory}/original/madoc-manifests/${idHash}`);
+          writeFileSync(`${fileDirectory}/original/madoc-manifests/${idHash}/manifest.json`, Buffer.from(text));
+
+          // @todo item exists eqv.
+
+          // 1. Insert into resource
+          item = await connection.one<{ id: number }>(
+            sql`insert into iiif_resource (type, source) VALUES ('manifest', ${iiifManifest.id}) RETURNING *`
+          );
+
+          // 2. Add metadata.
+          const labels = fromInternationalString(iiifManifest.label);
+          const atLeastOneLabel = labels.length ? labels : [{ value: 'Untitled manifest', lang: '@none' }];
+          const metadata = [
+            ...atLeastOneLabel.map(label => ({ key: 'label', value: label.value, language: label.lang || '@none' })),
+            ...fromInternationalString(iiifManifest.summary).map(summary => ({
+              key: 'summary',
+              value: summary.value,
+              language: summary.lang || '@none',
+            })),
+          ];
+
+          if (metadata.length) {
+            const inserts = metadata.map(
+              value => sql`(
+                ${value.key}, 
+                ${value.value || ''}, 
+                ${value.language}, 
+                ${item.id},
+                'iiif'
+              )`
+            );
+            await connection.query(
+              sql`insert into iiif_metadata (key, value, language, resource_id, source)
+                  VALUES ${sql.join(inserts, sql`,`)}`
+            );
+          }
+        });
+      } else {
+        // 3. Add manifest into Omeka.
+
+        itemAlready = await omeka
+          .one<Resource | undefined>(
+            mysql`SELECT r.*
               FROM resource r
                        LEFT JOIN value v on r.id = v.resource_id
                        LEFT JOIN property p on v.property_id = p.id
               WHERE p.local_name = 'identifier'
                 AND v.uri = ${iiifManifest.id}`
-        )
-        .catch(() => undefined);
+          )
+          .catch(() => undefined);
 
-      if (itemAlready) {
-        await api.updateTask(
-          task.id,
-          changeStatus('done', {
-            name: iiifGetLabel(iiifManifest.label),
-            state: { omekaId: itemAlready.id, isDuplicate: !!itemAlready },
-          })
+        if (itemAlready) {
+          await api.updateTask(
+            task.id,
+            changeStatus('done', {
+              name: iiifGetLabel(iiifManifest.label),
+              state: { omekaId: itemAlready.id, isDuplicate: !!itemAlready },
+            })
+          );
+          return;
+        }
+
+        item = await omeka.createItemFromTemplate(
+          'IIIF Manifest',
+          ResourceItem,
+          {
+            'dcterms:title': fromInternationalString(iiifManifest.label),
+            'dcterms:description': fromInternationalString(iiifManifest.summary),
+            'dcterms:identifier': [url('Manifest URI', iiifManifest.id)],
+            'dcterms:source': [
+              jsonMedia(
+                'Manifest source',
+                `/madoc-manifests/${idHash}/manifest.json`,
+                iiifManifest.id,
+                Buffer.from(text)
+              ),
+            ],
+          },
+          omekaUserId
         );
-        return;
       }
-
-      const item = await omeka.createItemFromTemplate(
-        'IIIF Manifest',
-        ResourceItem,
-        {
-          'dcterms:title': fromInternationalString(iiifManifest.label),
-          'dcterms:description': fromInternationalString(iiifManifest.summary),
-          'dcterms:identifier': [url('Manifest URI', iiifManifest.id)],
-          'dcterms:source': [
-            jsonMedia(
-              'Manifest source',
-              `/madoc-manifests/${idHash}/manifest.json`,
-              iiifManifest.id,
-              Buffer.from(text)
-            ),
-          ],
-        },
-        omekaUserId
-      );
 
       // 4. Add sub tasks for manifests
       const subtasks: ImportCanvasTask[] = [];
@@ -172,20 +223,46 @@ export const jobHandler = async (job: Job<{ taskId: string }>, omeka: OmekaApi) 
         return;
       }
 
-      const fields = [];
-      for (const subtask of subtasks) {
-        if (subtask.type === importCanvas.type) {
-          const omekaId = subtask.state.omekaId;
-          fields.push(entity(omekaId, 'resource:item'));
+      if (ENABLE_POSTGRES) {
+        const omekaId = task.state.omekaId;
+        if (!omekaId) {
+          await api.updateTask(job.data.taskId, changeStatus('error' as any));
+          return;
         }
+
+        const inserts = [];
+        for (const subtask of subtasks) {
+          if (subtask.type === importCanvas.type) {
+            inserts.push(
+              sql`(
+                ${omekaId},
+                ${subtask.state.omekaId},
+                ${subtask.state.canvasOrder}
+              )`
+            );
+          }
+        }
+
+        await postgres.query(
+          sql`INSERT INTO iiif_resource_items (resource_id, item_id, item_index) VALUES ${sql.join(inserts, sql`,`)}`
+        );
+      } else {
+        const fields = [];
+        for (const subtask of subtasks) {
+          if (subtask.type === importCanvas.type) {
+            const omekaId = subtask.state.omekaId;
+            fields.push(entity(omekaId, 'resource:item'));
+          }
+        }
+
+        await omeka.updateItem(
+          task.state.omekaId,
+          {
+            'sc:hasCanvases': fields,
+          },
+          omekaUserId
+        );
       }
-      await omeka.updateItem(
-        task.state.omekaId,
-        {
-          'sc:hasCanvases': fields,
-        },
-        omekaUserId
-      );
 
       await api.updateTask(job.data.taskId, changeStatus('done'));
       break;

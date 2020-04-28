@@ -31,13 +31,21 @@ export interface ApplicationState {
     scope: string[];
     context: string[];
     site: {
+      gateway: boolean;
       id: number;
       name: string;
     };
-    user: {
-      name: string;
-      id: number;
-    };
+    user:
+      | {
+          name: string;
+          id: number;
+          service: false;
+        }
+      | {
+          name: string;
+          id: string;
+          service: true;
+        };
   };
 }
 

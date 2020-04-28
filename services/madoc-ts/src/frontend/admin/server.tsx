@@ -9,28 +9,37 @@ import { ServerStyleSheet } from 'styled-components';
 import { StaticRouter, matchPath } from 'react-router-dom';
 import { StaticRouterContext } from 'react-router';
 import { routes } from './routes';
-import { api } from '../../gateway/api.server';
 import { parse } from 'query-string';
+import { ApiClient } from '../../gateway/api';
+
+const apiGateway = process.env.API_GATEWAY as string;
 
 export async function render({ url, basename, jwt }: { url: string; basename: string; jwt: string }) {
   const sheet = new ServerStyleSheet(); // <-- creating out stylesheet
+  const api = new ApiClient(apiGateway, jwt);
   const context: StaticRouterContext = {};
   const ssrContext: any = {};
   const [urlPath, urlQuery] = url.split('?');
   const path = urlPath.slice(urlPath.indexOf(basename) + basename.length);
   let routeData = '';
+  let matched = false;
   for (const route of routes) {
     const match = matchPath(path, route);
     if (match) {
+      matched = true;
       const queryString = urlQuery ? parse(urlQuery) : {};
-      console.log(queryString);
       const data = await route.component.getData(match.params, api, queryString);
       ssrContext.data = data;
       routeData = `<script type="application/json" data-react-route="${path}">${JSON.stringify(data)}</script>`;
       break;
-    } else {
-      console.log('NO MATCH?', url);
     }
+  }
+
+  if (!matched) {
+    return {
+      type: 'redirect',
+      status: 404,
+    };
   }
 
   const markup = renderToString(

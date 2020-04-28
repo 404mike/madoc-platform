@@ -11,7 +11,10 @@ import { getReactPage } from './routes/iiif-import/react-testing';
 import { frontendBundles } from './routes/assets/frontend-bundles';
 import { adminFrontend } from './routes/admin/frontend';
 import { listCollections } from './routes/iiif/list-collections';
-import {getCollection} from './routes/iiif/get-collection';
+import { getCollection } from './routes/iiif/get-collection';
+import { createCollection } from './routes/iiif/create-collection';
+import * as collections from './routes/iiif/collections';
+import * as manifests from './routes/iiif/manifests';
 
 export const router = new TypedRouter({
   // Normal route
@@ -20,6 +23,36 @@ export const router = new TypedRouter({
   'import-collection': [TypedRouter.POST, '/api/madoc/iiif/collection', importCollection],
   'get-scopes': [TypedRouter.GET, '/api/madoc/site/:siteId/permissions', getSiteScopes],
   'update-scopes': [TypedRouter.POST, '/api/madoc/site/:siteId/permissions', saveSiteScopes],
+
+  // New beta routes.
+  'beta-create-collection': [TypedRouter.POST, '/api/madoc/beta/iiif/collections', collections.createCollection],
+  'beta-get-collection': [TypedRouter.GET, '/api/madoc/beta/iiif/collections/:collectionId', collections.getCollection],
+  'beta-list-collections': [TypedRouter.GET, '/api/madoc/beta/iiif/collections', collections.listCollections],
+  'beta-update-collection-structure': [
+    TypedRouter.PUT,
+    '/api/madoc/beta/iiif/collections/:collectionId/structure',
+    collections.updateCollectionStructure,
+  ],
+  'beta-get-collection-structure': [
+    TypedRouter.GET,
+    '/api/madoc/beta/iiif/collections/:collectionId/structure',
+    collections.getCollectionStructure,
+  ],
+  'beta-get-collection-metadata': [
+    TypedRouter.GET,
+    '/api/madoc/beta/iiif/collections/:collectionId/metadata',
+    collections.getCollectionMetadata,
+  ],
+  'beta-create-manifest': [TypedRouter.POST, '/api/madoc/beta/iiif/manifests', manifests.createManifest],
+  'beta-get-manifest': [TypedRouter.GET, '/api/madoc/beta/iiif/manifests/:manifestId', manifests.getManifest],
+  'beta-list-manifests': [TypedRouter.GET, '/api/madoc/beta/iiif/manifests', manifests.listManifests],
+  'beta-get-manifest-metadata': [
+    TypedRouter.GET,
+    '/api/madoc/beta/iiif/manifests/:manifestId/metadata',
+    manifests.getManifestMetadata,
+  ],
+  // Collections
+  'create-collection': [TypedRouter.POST, '/api/madoc/iiif/collections', createCollection],
   'get-collections': [TypedRouter.GET, '/api/madoc/iiif/collections', listCollections],
   'get-collection': [TypedRouter.GET, '/api/madoc/iiif/collection/:collectionId', getCollection],
 

@@ -14,6 +14,7 @@
     "build:admin": "webpack --config webpack.frontend.js src/frontend/admin/client.tsx --output-path lib/frontend/admin/build"
   },
   "dependencies": {
+    "@hyperion-framework/react-vault": "^0.3.11",
     "@hyperion-framework/types": "^0.3.9",
     "@hyperion-framework/vault": "^0.3.10",
     "@koa/router": "^8.0.6",
@@ -46,6 +47,7 @@
     "query-string": "^6.12.1",
     "react": "^16.13.1",
     "react-dom": "^16.13.1",
+    "react-query": "^1.2.9",
     "react-router-dom": "^5.1.2",
     "sharp": "^0.25.2",
     "slonik": "^22.4.3",

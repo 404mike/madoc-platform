@@ -23,7 +23,7 @@ import * as manifest from '../../tasks/import-manifest';
 import * as collection from '../../tasks/import-collection';
 
 export const importManifest: RouteMiddleware<{}, { manifest: string }> = async (context, next) => {
-  if (!context.state.jwt) {
+  if (!context.state.jwt || context.state.jwt.user.service) {
     context.response.status = 404;
     return;
   }
@@ -36,7 +36,7 @@ export const importManifest: RouteMiddleware<{}, { manifest: string }> = async (
 };
 
 export const importCollection: RouteMiddleware<{}, { collection: string }> = async (context, next) => {
-  if (!context.state.jwt) {
+  if (!context.state.jwt || context.state.jwt.user.service) {
     context.response.status = 404;
     return;
   }
