@@ -2,6 +2,8 @@ import React from 'react';
 import { UniversalComponent } from '../../types';
 import styled from 'styled-components';
 import { Link } from 'react-router-dom';
+import { createUniversalComponent } from '../utility';
+import { useTranslation } from 'react-i18next';
 
 const StatisticLabel = styled.div`
   color: #333;
@@ -57,12 +59,14 @@ const MenuList = styled.div`
   }
 `;
 
-const Homepage: UniversalComponent<{ name: string }, { jwt: string }> = ({ name }) => {
+const Homepage: React.FC = () => {
+  const { t } = useTranslation();
+
   return (
     <div>
       <StatisticContainer>
         <Statistic>
-          <StatisticNumber>2</StatisticNumber>
+          <StatisticNumber>3</StatisticNumber>
           <StatisticLabel>Collections</StatisticLabel>
         </Statistic>
         <Statistic>
@@ -87,7 +91,7 @@ const Homepage: UniversalComponent<{ name: string }, { jwt: string }> = ({ name 
           <MenuTitle>Content</MenuTitle>
           <MenuList>
             <li>
-              <Link to="/collections">Manage collections</Link>
+              <Link to="/collections">{t('Manage collections')}</Link>
             </li>
             <li>
               <span>Manage manifests</span>
@@ -157,12 +161,6 @@ const Homepage: UniversalComponent<{ name: string }, { jwt: string }> = ({ name 
       </AdminSectionGrid>
     </div>
   );
-};
-
-Homepage.getData = async (params, api) => {
-  return {
-    name: 'Someone',
-  };
 };
 
 export { Homepage };

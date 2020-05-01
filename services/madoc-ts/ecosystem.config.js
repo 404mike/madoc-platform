@@ -58,14 +58,14 @@ module.exports = {
             instances: 1,
             autorestart: true,
             max_memory_restart: '1G',
-            watch: ['lib/queue'],
+            watch: ['lib/queue/producer.js'],
           },
           {
             name: 'scheduler',
             script: 'lib/queue/scheduler.js',
             instances: 1,
             autorestart: true,
-            watch: ['lib/queue'],
+            watch: ['lib/queue/scheduler.js'],
           },
         ],
 };

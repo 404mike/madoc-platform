@@ -15,9 +15,13 @@ import { syncOmeka } from './utility/sync-omeka';
 import { setJwt } from './middleware/set-jwt';
 import { generateKeys } from './utility/generate-keys';
 import { syncJwtRequests } from './utility/sync-jwt-requests';
+import { readdirSync, readFileSync } from 'fs';
+import * as path from 'path';
+import { createBackend } from './i18n/i18next.server';
 
 export async function createApp(router: TypedRouter<any, any>, config: ExternalConfig) {
   const app = new Koa();
+  const i18nextPromise = createBackend();
   const pool = createPostgresPool();
   const mysqlPool = createMysqlPool();
 
@@ -34,9 +38,21 @@ export async function createApp(router: TypedRouter<any, any>, config: ExternalC
   app.context.routes = router;
   app.context.mysql = mysqlPool;
 
+  // Set i18next
+  const [t, i18next] = await i18nextPromise;
+  app.context.i18next = await i18next;
+
+  console.log(app.context.i18next);
+
   // Validator.
   app.context.ajv = new Ajv();
-  app.context.ajv.addSchema(require('../schemas/example.json'), 'example');
+  for (const file of readdirSync(path.resolve(__dirname, '..', 'schemas'))) {
+    const name = path.basename(file, '.json');
+    app.context.ajv.addSchema(
+      JSON.parse(readFileSync(path.resolve(__dirname, '..', 'schemas', file)).toString('utf-8')),
+      name
+    );
+  }
 
   app.use(postgresConnection(pool));
   app.use(json({ pretty: process.env.NODE_ENV !== 'production' }));

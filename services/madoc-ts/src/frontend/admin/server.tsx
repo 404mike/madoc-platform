@@ -11,26 +11,45 @@ import { StaticRouterContext } from 'react-router';
 import { routes } from './routes';
 import { parse } from 'query-string';
 import { ApiClient } from '../../gateway/api';
+import { queryCache } from 'react-query';
+import { I18nextProvider } from 'react-i18next';
+import { createBackend } from '../../i18n/i18next.server';
+import { i18n } from 'i18next';
 
 const apiGateway = process.env.API_GATEWAY as string;
 
-export async function render({ url, basename, jwt }: { url: string; basename: string; jwt: string }) {
+export async function render({
+  url,
+  basename,
+  jwt,
+  i18next,
+}: {
+  url: string;
+  basename: string;
+  jwt: string;
+  i18next: i18n;
+}) {
   const sheet = new ServerStyleSheet(); // <-- creating out stylesheet
   const api = new ApiClient(apiGateway, jwt);
   const context: StaticRouterContext = {};
-  const ssrContext: any = {};
   const [urlPath, urlQuery] = url.split('?');
   const path = urlPath.slice(urlPath.indexOf(basename) + basename.length);
   let routeData = '';
   let matched = false;
+  const ssrData: any = {};
   for (const route of routes) {
     const match = matchPath(path, route);
     if (match) {
       matched = true;
       const queryString = urlQuery ? parse(urlQuery) : {};
-      const data = await route.component.getData(match.params, api, queryString);
-      ssrContext.data = data;
-      routeData = `<script type="application/json" data-react-route="${path}">${JSON.stringify(data)}</script>`;
+      if (route.component.getKey && route.component.getData) {
+        const [key, vars] = route.component.getKey(match.params, queryString);
+        const data = await route.component.getData(key, vars, api);
+        // Set the SSR context.
+        ssrData.key = [key, vars];
+        ssrData.data = data;
+        routeData = `<script type="application/json" id="react-query-data" >${JSON.stringify(ssrData)}</script>`;
+      }
       break;
     }
   }
@@ -44,10 +63,12 @@ export async function render({ url, basename, jwt }: { url: string; basename: st
 
   const markup = renderToString(
     sheet.collectStyles(
-      <SSRContext.Provider value={ssrContext}>
-        <StaticRouter basename={basename} location={url} context={context}>
-          <AdminApp api={api} />
-        </StaticRouter>
+      <SSRContext.Provider value={ssrData}>
+        <I18nextProvider i18n={i18next}>
+          <StaticRouter basename={basename} location={url} context={context}>
+            <AdminApp api={api} />
+          </StaticRouter>
+        </I18nextProvider>
       </SSRContext.Provider>
     )
   );

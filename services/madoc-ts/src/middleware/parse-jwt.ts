@@ -30,19 +30,15 @@ export const parseJwt: RouteMiddleware<{ slug?: string }> = async (context, next
   } else {
     // If there is no slug, then a JWT is always required, BUT it is always verified by the Gateway. We will verify
     // it anyway.
-    try {
-      const jwt = getToken(context);
-      if (jwt) {
-        const token = verifySignedToken(jwt);
-        if (token) {
-          context.state.jwt = parseJWT(token);
-          await next(); // only here.
-          return;
-        }
+
+    const jwt = getToken(context);
+    if (jwt) {
+      const token = verifySignedToken(jwt);
+      if (token) {
+        context.state.jwt = parseJWT(token);
+        await next(); // only here.
+        return;
       }
-    } catch (e) {
-      // Nothing to catch here, rethrow below.
-      console.log(e);
     }
 
     // If we get to here, no valid token on a non-madoc endpoint.

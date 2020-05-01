@@ -1,17 +1,25 @@
 import React from 'react';
 import { ApiClient } from '../gateway/api';
 
-export type UniversalComponent<Data, Params = {}, Query = {}> = React.FC<Data & Params> & {
-  getData: (params: Params, api: ApiClient, queryString: Query) => Promise<Data>;
-};
-
 export type UniversalRoute = {
   path: string;
   exact?: boolean;
-  component: UniversalComponent<any, any, any>;
+  component: QueryComponent;
 };
 
-export type QueryComponent<Data = any, TKey = any, TVariables = any> = React.FC & {
-  getKey: (params: any, query: any) => [TKey, TVariables];
-  getData: (key: TKey, vars: TVariables, api: ApiClient) => Promise<Data>;
+export type UniversalComponent<
+  Definition extends {
+    data?: any;
+    query?: any;
+    params?: any;
+    variables?: any;
+  }
+> = React.FC & {
+  getData?: (key: string, vars: Definition['variables'], api: ApiClient) => Promise<Definition['data']>;
+  getKey?: (params: Definition['params'], query: Definition['query']) => [string, Definition['variables']];
+};
+
+export type QueryComponent<Data = any, TKey = any, TVariables = any, Params = any, Query = any> = React.FC & {
+  getKey?: (params: Params, query: Query) => [TKey, TVariables];
+  getData?: (key: TKey, vars: TVariables, api: ApiClient) => Promise<Data>;
 };

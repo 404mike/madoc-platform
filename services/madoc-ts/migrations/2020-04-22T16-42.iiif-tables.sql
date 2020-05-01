@@ -29,23 +29,30 @@ create unique index iiif_resource_source_uindex
 
 create table iiif_derivative
 (
-    id             serial              not null
+    id serial not null
         constraint iiif_derivative_pk
             primary key,
-    type           text                not null,
-    resource_id    integer             not null
+    type text not null,
+    resource_id integer not null
         constraint iiif_derivative_iiif_resource_id_fk
             references iiif_resource
             on update cascade on delete cascade,
-    resource_index integer   default 0 not null,
-    context        ltree,
-    created_by     text,
-    created_at     timestamp default CURRENT_TIMESTAMP,
-    slug           text
+    resource_index integer default 0 not null,
+    context ltree,
+    created_by text,
+    created_at timestamp default CURRENT_TIMESTAMP,
+    slug text
 );
 
-alter table iiif_derivative
-    owner to madoc;
+alter table iiif_derivative owner to madoc;
+
+create unique index iiif_derivative_resource_id_context_uindex
+    on iiif_derivative (resource_id, context);
+
+create index iiif_derivative_resource_id_index
+    on iiif_derivative (resource_id);
+
+
 
 create table iiif_metadata
 (
@@ -958,5 +965,24 @@ begin
     raise debug 'Merging context result: %', return_arr;
 
     return return_arr;
+end;
+$$ language plpgsql;
+
+create or replace function manifest_thumbnail(
+    site_id int, manifest_id int
+) returns text as
+$$
+declare
+    return_value text;
+begin
+    select default_thumbnail
+    from iiif_derivative ir
+             left join iiif_resource i on ir.resource_id = i.id
+    where ir.type = 'canvas'
+      and ir.context <@ ('site_' || site_id || '.manifest_' || manifest_id)::ltree
+      and default_thumbnail is not null
+      and default_thumbnail != '' limit 1 into return_value;
+
+    return return_value;
 end;
 $$ language plpgsql;

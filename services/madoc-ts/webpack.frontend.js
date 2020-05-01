@@ -1,7 +1,9 @@
 module.exports = {
-  mode: 'production',
+  mode: process.env.NODE_ENV,
+  devtool: 'inline-source-map',
   output: {
     filename: 'bundle.js',
+    pathinfo: false,
   },
   module: {
     rules: [
@@ -10,6 +12,10 @@ module.exports = {
         use: [
           {
             loader: require.resolve('ts-loader'),
+            options: {
+              transpileOnly: true,
+              experimentalWatchApi: true,
+            },
           },
         ],
       },

@@ -1,0 +1,13 @@
+## Remaining
+- Detecting a change in language
+    - Methods
+        - Browser detect (sets cookie) <-- last
+        - Cookie <-- second
+        - Query string (sets cookie) <-- first
+    - Places
+        - React browser environment
+        - React server environment
+        - Koa for SSR
+- Integrate with international string component
+- Integrate with metadata component editor
+- PHP loader: https://github.com/pkly/i18next-php

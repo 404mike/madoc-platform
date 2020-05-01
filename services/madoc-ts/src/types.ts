@@ -5,6 +5,7 @@ import { DatabasePoolConnectionType } from 'slonik';
 import { Ajv } from 'ajv';
 import { Pool } from 'mysql';
 import { OmekaApi } from './utility/omeka-api';
+import { i18n } from 'i18next';
 
 export type ExternalConfig = {
   cookieName?: string;
@@ -50,6 +51,7 @@ export interface ApplicationState {
 }
 
 export interface ApplicationContext {
+  i18next: i18n;
   externalConfig: ExternalConfig;
   routes: typeof router;
   mysql: Pool;

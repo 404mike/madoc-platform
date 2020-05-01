@@ -8,6 +8,9 @@ export const errorHandler: Middleware = async (context, next) => {
   try {
     await next();
   } catch (err) {
+
+    console.log('CAUGHT ERROR', err);
+
     if (err instanceof RequestError) {
       context.response.body = { error: err.message };
       context.status = 400;

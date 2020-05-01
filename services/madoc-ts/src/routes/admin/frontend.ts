@@ -8,6 +8,7 @@ export const adminFrontend: RouteMiddleware = context => {
       url: context.req.url || '',
       jwt: token,
       basename: `/s/${context.params.slug}/madoc/admin`,
+      i18next: context.i18next.cloneInstance({ initImmediate: false }),
     });
 
     if (result.type === 'redirect') {
